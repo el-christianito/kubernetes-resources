@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:  
+  name: mongo-env
+  labels:
+    app: mongo-env
+data:
+  MONGODB_DBNAME: codeWithDan
+  MONGODB_ROLE: readWrite
+  MONGODB_ROOT_ROLE: root
+  MONGODB_ROOT_USERNAME: dbadmin
+  MONGODB_USERNAME: webrole
+
+---
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+reclaimPolicy: Retain # retain or delete (default) after PVC is released, inherited by PVs & PVCs
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mongo-pv
+spec:
+  capacity: 
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-storage # reference name of storage class
+  local:
+    path: /c/temp/data/db # /tmp/data/db -> linux/mac
+  nodeAffinity:
+    required:
+      nodeSelectorTerms: # select Node where the local storage PV is created
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - docker-desktop # only worker node we have here
+                
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-storage # reference name of storage class
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  labels:
+    app: mongo
+spec:
+  selector:
+    app: mongo
+  ports:
+  - name: "27017"
+    port: 27017
+    targetPort: 27017
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet # deployment and scaling of pods while guaranteeing ordering and uniqueness (this is a DB after all) -> predictable name, stateful Pod, same place
+metadata:
+  name: mongo
+  labels:
+    app: mongo
+spec:
+  selector:
+    matchLabels:
+      app: mongo
+  serviceName: mongo
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:     
+      # Can uncomment following lines if on Mac/Linux  (issue on Docker for Windows prevents this from working)
+      # volumes:
+      #   - name: mongo-volume
+      #     persistentVolumeClaim:
+      #       claimName: mongo-pvc # reference to PVC
+      containers:
+      - name: mongo
+        image: mongo
+        ports:
+        - containerPort: 27017
+        command:
+          - mongod
+          - "--auth"
+        resources:
+        # Can uncomment following lines if on Mac/Linux (issue on Docker for Windows prevents this from working)     
+        # volumeMounts:
+        # - name: mongo-volume
+        #   mountPath: /data/db
+        env: # Pull passwords from secrets
+          - name: MONGODB_DBNAME
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_DBNAME
+                name: mongo-env
+          - name: MONGODB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-passwords
+                key: db-password
+          - name: MONGODB_ROLE
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_ROLE
+                name: mongo-env
+          - name: MONGODB_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-passwords
+                key: db-root-password
+          - name: MONGODB_ROOT_ROLE
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_ROOT_ROLE
+                name: mongo-env
+          - name: MONGODB_ROOT_USERNAME
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_ROOT_USERNAME
+                name: mongo-env
+          - name: MONGODB_USERNAME
+            valueFrom:
+              configMapKeyRef:
+                key: MONGODB_USERNAME
+                name: mongo-env

@@ -180,6 +180,14 @@
   kubectl port-forward service/[service-name] [local-port]:[container-port]
   ```
 
+#### Volume commands
+
+- get storages
+  ```bash
+  kubectl get pv --show-labels
+  kubectl get pv -l app=nginx
+  ```
+
 ## YAML Declarations
 
 ### Defining a Pod with YAML
@@ -313,4 +321,264 @@ spec:
   ports: # define container target port and port for the service
     - port: 8080
       targetPort: 80
+```
+
+## Storage options
+
+### Overview
+
+How to store application state/data and exchange it between Pods?
+
+- Volumes -> can hold data and state for Pods and containers
+  - emptyDir -> empty directory for storing transient data (sharing a Pod's lifetime) between containers within a Pod
+  - hostPath -> Pod mounts into the node's filesystem
+- PersistentVolumes
+  - nfs -> network file system share mounted into pod
+  - configMap/secret -> special types of volumnes which provide a Pod with access to Kubernetes resources
+  - cloud -> cluster-wide storage
+- PersistentVolumeClaims
+  - provides Pods with a more persistent storage option which is abstracted from details
+- Storage classes
+  - type of storage template which can be used to dynamically provision storage
+
+### Volumes
+
+How to find out mounted volumes?
+
+```bash
+kubectl describe pod [pod-name]
+kubectl get pod [pod-name] -o yml
+```
+
+### Defining a volume within a YAML
+
+#### Empty directory
+
+- both defined containers are talking to same storage
+- volume is lost when Pod goes down
+
+```yaml
+apiVersion: v1
+kind: Pod
+spec:
+  volumes: # define initial volume named "html" being an empty directory
+    - name: html
+      emptyDir: {}
+  containers:
+    - name: nginx
+      image: nginx:alpine
+      volumeMounts:
+        - name: html # must match name of defined volume
+          mountPath: /usr/share/nginx/html
+          readOnly: true
+    - name: html-updater
+      image: alpine
+      command: ["/bin/sh", "-c"]
+      args:
+        - while true; do date >> /html/index.html;
+          sleep 10; done
+      volumeMounts:
+        - name: html # must match name of defined volume
+          mountPath: /html
+```
+
+#### HostPath volume
+
+- easy to set-up
+- good to get started when having single worker node
+- when Node goes down, volume is lost -> for multi-node clusters network storage should be used
+
+```yaml
+apiVersion: v1
+kind: Pod
+spec:
+  volumes:
+    - name: docker-socket # define socket volume on host pointing to docker socket
+      hostPath: # talk to specific directory on worker node
+        path: /var/run/docker.sock
+        type: Socket # also possible File/Directory/...
+  containers:
+    - name: docker
+      image: docker
+      command: ["sleep"]
+      args: ["100000"]
+      volumeMounts:
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
+```
+
+#### (Azure) Cloud volume (similar on others)
+
+```yaml
+apiVersion: v1
+kind: Pod
+spec:
+  volumes: # define volume named data
+    - name: data
+      azureFile:
+        secretName: <azure-secret>
+        shareName: <share-name>
+        readOnly: false
+  containers:
+    - name: my-app
+      image: someimage
+      volumeMounts:
+        - name: data # note: referencing name
+          mountPath: /data/storage
+```
+
+### Persistent Volumes and PersistentVolumeClaims
+
+#### PersistentVolume (PV)
+
+- cluster-wide storage unit provisioned by an administrator with lifecycle **independent** from a Pod
+- available to Pod even if it gets rescheduled on a different Node
+- relies on a form of NAS (e.g. NFS, cloud, etc.)
+- associated with a Pod by using PersistentVolumeClaim (PVC)
+
+#### PersistentVolumeClaim (PVC)
+
+- is a request for a storage unit (PV)
+- Pod volume references the PVC
+- Kubernetes relays it to PV
+
+#### YAML
+
+- there's a github with examples https://github.com/kubernetes/examples
+
+PV:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: my-pv
+spec:
+  capacity: 10Gi
+  accessModes:
+    - ReadWriteOnce # One client/Pod can mount for rw
+    - ReadOnlyMany # many clients/Pods can mount for ro
+  persistentVolumeReclaimPolicy: Retain # even if claim is deleted, don't delete
+  azureFile:
+    secretName: <azure-secret>
+    shareName: <share-name>
+    readonly: false
+```
+
+PVC:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pv-dd-account-hdd-5g
+  annotations:
+    volume.beta.kubernetes.io/storage-class: accounthdd
+spec:
+  accessModes:
+    - ReadWriteOnce # One client/Pod can mount for rw
+  resources:
+    requests:
+      storage: 5Gi # only 5 Gig for this claim, eventhough PV is bigger
+```
+
+Volume using PVC:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-uses-account-hdd-5g
+  labels:
+    name: storage
+spec:
+  volumes:
+    - name: blobdisk01
+      persistentVolumeClaim: # bind to PVC
+        claimName: pv-dd-account-hdd-5g
+  containers:
+    - image: nginx
+      name: az-c-01
+      command:
+        - /bin/sh
+        - -c
+        - while true; do echo ($date) >> /mnt/blobdisk/outfile; sleep 1; done
+      volumeMounts:
+        - name: blobdisk01 # link volume name
+          mountPath: /mnt/blobdisk
+```
+
+### Storage Classes
+
+- can be used to defined different classes of storage
+- acts as storage template
+- supports dynamic provisioning of PV
+- usually done by administrator (who don't have to create PVs in advance then)
+
+#### YAML
+
+StorageClass
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+reclaimPolicy: Retain # retain or delete (default) after PVC is released, PVCs and PVs inerhit reclaim policy here
+provisioner: kubernetes.io/no-provisioner # volume plugin that will be used to create PersistentVolume resource (here: none, so has PV to be done manually in advance)
+volumeBindingMode: WaitForFirstConsumer # wait unit Pod making PVC is created. (default: Immediate, created once PVC is created)
+```
+
+PersistentVolume
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: my-pv
+spec:
+  capacity: 10Gi
+  volumeMode: Block
+  accessModes:
+    - ReadWriteOnce # one client can mount for rw
+  storage-class: local-storage # reference storage-class name from above
+  local:
+    path: /data/storage # path where data is stored on worker node
+  nodeAffinity:
+    required:
+      nodeSelectorTerms: # select Node where the local storage PV is created
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - <node-name> # insert hostname here
+```
+
+PersistentVolumeClaim
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce # access mode and storage classification PV needs to support
+  storageClassName: local-storage # reference storage-class name from above
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+Use PVC
+
+```yaml
+apiVersion: v1
+kind: [Pod | StatefulSet | Deployment]
+---
+spec:
+  volumes:
+    - name: my-volume
+      persistentVolumeClaim:
+        claimName: my-pvc
 ```
