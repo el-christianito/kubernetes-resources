@@ -262,9 +262,9 @@ spec:
 
 - template can be extracted into separate file, being matched by labels
 
-### Services
+## Services
 
-#### Overview
+### Overview
 
 - Services provides single point of entry for accessing one or more Pods
 - abstract Pod IP addresses
@@ -274,7 +274,7 @@ spec:
 - Services don't die & get recreated (in contrast to Pods)
 - creates endpoints between Services and Pods
 
-#### Services Types:
+### Services Types:
 
 - ClusterIP (Default)
   - Expose Service IP internally within the cluster
@@ -297,7 +297,7 @@ spec:
   - acts as an alias for an external service
   - external service details are hidden from a cluster (easier to change)
 
-#### Defining a service with YAML
+### Defining a service with YAML
 
 ```yaml
 apiVersion: v1
