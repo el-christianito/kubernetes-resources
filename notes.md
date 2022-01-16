@@ -100,7 +100,7 @@
   kubectl patch [pod-name]
   ```
 
-#### Troubleshooting Commands
+### Troubleshooting Commands
 
 - get information on a pod
   ```bash
@@ -115,7 +115,7 @@
   kubectl exec [pod-name] -- curl -s http://podIP
   ```
 
-#### Deployment commands
+### Deployment commands
 
 - start deployment
 
@@ -151,7 +151,7 @@
   kubectl port-forward deployment/[deployment-name] [local-port]:[container-port]
   ```
 
-#### Service commands
+### Service commands
 
 - start service
 
@@ -180,12 +180,57 @@
   kubectl port-forward service/[service-name] [local-port]:[container-port]
   ```
 
-#### Volume commands
+### Volume commands
 
 - get storages
   ```bash
   kubectl get pv --show-labels
   kubectl get pv -l app=nginx
+  ```
+
+### ConfigMap commands
+
+- get all ConfigMaps
+
+  ```bash
+  kubectl get cm
+  ```
+
+- get specific ConfigMap
+
+  ```bash
+  kubectl get cm [configmap-name] -o yaml
+  ```
+
+- create ConfigMap from manifest
+  ```bash
+  kubectl create -f [path-to-manifest]
+  ```
+- create ConfigMap from config/data file (key/value pairs)
+- filename becomes the key (see "ConfigMap manifest in YAML" below)
+
+  ```bash
+  kubectl create configmap [configmap-name] --from-file=[path-to-file]
+  ```
+
+- create ConfigMap from env file (key/value pairs)
+
+  ```bash
+  kubectl create configmap [configmap-name] --from-env-file=[path-to-file]
+  ```
+
+- create config map from passed data values
+
+  ```bash
+  kubectl create configmap [configmap-name]
+    --from-literal=[key]=[value]
+    --from-literal=[otherKey]=[otherValue]
+  ```
+
+- delete ConfigMap
+
+  ```bash
+  kubectl delete cm [configmap-name]
   ```
 
 ## YAML Declarations
@@ -582,3 +627,171 @@ spec:
       persistentVolumeClaim:
         claimName: my-pvc
 ```
+
+## ConfigMaps
+
+- a way to store configuration info and provide it to containers
+- injects configuration data into a container
+- can store entire files or provide key/value pairs
+  - file: key is filename, value is contents (JSON, XML, key/values, ...)
+  - provide on command-line
+  - ConfigMap provided via manifest (YAML)
+- ConfigMaps can be accessed from a Pod by
+  - environment variables (key/value)
+  - ConfigMap volume (as files)
+
+### ConfigMaps in YAML
+
+- manifest
+
+  ```yaml
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: app-settings # for referencing in Pods etc.
+    labels:
+      app: app-settings
+  data:
+    enemies: aliens
+    lives: "3"
+    enemies.cheat: "true"
+    enemies.cheat.level: "noGoodRotten"
+  ```
+
+- config file (after importing config file via kubectl, this is what we have then)
+
+  ```yaml
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: app-settings # for referencing in Pods etc.
+    labels:
+      app: app-settings
+  data:
+    game.config: |- # file-name is key of the values
+      enemies=aliens
+      lives=3
+      enemies.cheat=true
+      enemies.cheat.level=noGoodRotten
+  ```
+
+- env file (after importing config file via kubectl, this is what we have then)
+- notice this is much closer to manifest (file name is **not** included as key)
+
+  ```yaml
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: app-settings # for referencing in Pods etc.
+    labels:
+      app: app-settings
+  data: enemies=aliens
+    lives=3
+    enemies.cheat=true
+    enemies.cheat.level=noGoodRotten
+  ```
+
+### Defining key/value pairs in a file
+
+- config file instead of manifest, e.g. game.config
+
+  ```
+  enemies=aliens
+  lives=3
+  enemies.cheat=true
+  enemies.cheat.level=noGoodRotten
+  ```
+
+### Defining key/value pairs in an Env file
+
+- this is not a config file but an environment variables file (game-config.env)
+- looks exactly the same (obviously)
+- create call is different (see under Commands)
+
+  ```
+  enemies=aliens
+  lives=3
+  enemies.cheat=true
+  enemies.cheat.level=noGoodRotten
+  ```
+
+### Using ConfigMaps
+
+- access configMap in Pod, set one value to single environment variable
+
+  ```yaml
+  apiVersion: v1
+  kind: Pod
+  ---
+  spec:
+    template:
+      containers: ...
+      env:
+        - name: ENEMIES # name of the environment variable created within pod
+          valueFrom:
+            configMapKeyRef:
+              name: app-settings # here's our reference
+              key: enemies
+  ```
+
+- access configMap in Pod, set whole ConfigMap as environment variables
+
+  ```yaml
+  apiVersion: v1
+  kind: Pod
+  ---
+  spec:
+    template:
+      containers: ...
+      envFrom:
+        - configMapRef:
+            name: app-settings # here's our reference
+  ```
+
+- access configMap in Pod, by volume
+- each key is converted to a file, value is added into the file (so linuxy)
+- nice:
+
+  - if ConfigMap changes, referenced files would automatically update
+  - if code detects file changes -> make ^s live updates possible! (30-60s delay possible though)
+
+  ```yaml
+  apiVersion: v1
+  kind: Pod
+  ---
+  spec:
+    volumes:
+      - name: app-config-vol
+        configMap:
+          name: app-settings # here's our reference
+    containers:
+      volumeMounts:
+        - name: app-config-vol # referencing volume above
+          mountPath: /etc/config # path to store config files to be accessed
+  ```
+
+#### Defining key/value pairs in a file
+
+- config file instead of manifest, e.g. game.config
+
+  ```
+  enemies=aliens
+  lives=3
+  enemies.cheat=true
+  enemies.cheat.level=noGoodRotten
+  ```
+
+#### Defining key/value pairs in an Env file
+
+- this is not a config file but an environment variables file (game-config.env)
+- looks exactly the same (obviously)
+- create call is different (see under Commands)
+
+  ```
+  enemies=aliens
+  lives=3
+  enemies.cheat=true
+  enemies.cheat.level=noGoodRotten
+  ```
+
+#### Using ConfigMaps
