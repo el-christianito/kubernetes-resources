@@ -233,6 +233,36 @@
   kubectl delete cm [configmap-name]
   ```
 
+### Secret commands
+
+- create secret
+
+  ```bash
+  kubectl create secret generic [secret-name]
+    --from-literal=[key]=[value]
+  ```
+
+- create secret from file
+
+  ```bash
+  kubectl create secret generic [secret-name]
+    --from-file=[key]=[path-to-file]
+  ```
+
+- create secret from key pair
+
+  ```bash
+  kubectl create secret tls [secret-name]
+    --cert=[path-to-tls.cert]
+    --key=[path-to-tls.key]
+  ```
+
+- get existing secrets (yaml output in base64, should only be allowed for trusted admins)
+  ```bash
+  kubectl get secrets
+  kubectl get secrets db-passwords -o yaml
+  ```
+
 ## YAML Declarations
 
 ### Defining a Pod with YAML
@@ -770,28 +800,76 @@ spec:
           mountPath: /etc/config # path to store config files to be accessed
   ```
 
-#### Defining key/value pairs in a file
+## Secrets
 
-- config file instead of manifest, e.g. game.config
+- object that contains a small amount of sensitive data, e.g. password, token, key
+- kubernetes can store sensitive information
+- avoids storing secrets in container images, files, manifests
+- possibility to mount secrets into pods as files or environment variables
+- kubernetes only makes secrets available to Nodes that have a Pod requesting the secret
+- secrets are stored in tmpfs on a Node (not on disk)
 
-  ```
-  enemies=aliens
-  lives=3
-  enemies.cheat=true
-  enemies.cheat.level=noGoodRotten
-  ```
+### Best practices
 
-#### Defining key/value pairs in an Env file
+- docs: https://kubernetes.io/docs/concepts/configuration/secret/#best-practices
+- enable encryption when stopping cluster https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/
+- stored on etcd on master node
+- limit access to ectd (where secrets are stored) to only admin users
+- use SSL/TLS for etcd peer-to-peer communication
+- in YAML/JSON secret is only base64 encoded -> can be decoded if checked in!
+- Pods can access Secrets, so secure which users can create Pods. Role-based access control can be used.
 
-- this is not a config file but an environment variables file (game-config.env)
-- looks exactly the same (obviously)
-- create call is different (see under Commands)
+### YAML
 
-  ```
-  enemies=aliens
-  lives=3
-  enemies.cheat=true
-  enemies.cheat.level=noGoodRotten
-  ```
+Defining secret in YAML (caution! It's readable when being checked in in VCS)
 
-#### Using ConfigMaps
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-passwords # to reference in Pods etc.
+type: Opaque
+data:
+  db-password: cGFzv3dvcmQ= # data are base64 encoded -> but can be easily decoded if checked in!
+  admin-password: dmVyeV9zZWNyZXQ=
+```
+
+Using secret from secret storage in Pod (safe)
+
+```yaml
+apiVersion: v1
+kind: Pod
+...
+spec:
+  template:
+  ...
+  spec:
+    containers: ...
+    env:
+      - name: DATABASE_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: db-passwords  # referencing metadata name in YAML above
+            key: db-password    # referencing data entry in YAML above
+```
+
+Using secret, access through volume (secrets mounted as files)
+
+```yaml
+apiVersion: v1
+kind: Pod
+...
+spec:
+  template:
+  ...
+  spec:
+    volumes:
+      - name: secrets
+        secret:
+          secretName: db-passwords # referencing name above
+        containers: ...
+        volumeMounts:
+          - name: secrets
+            mountPath: /etc/db-passwords
+            readonly: true
+```
