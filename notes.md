@@ -47,10 +47,11 @@
   kubectl run [pod-name] --image=[image-name]
   ```
 
-- check all/pods/services
+- check all/pods/services, watch
 
   ```bash
   kubectl get all[/pods/services]
+  kubectl get all[/pods/services] --watch
   ```
 
 - check specific pod, output YAML
@@ -105,6 +106,17 @@
 - get information on a pod
   ```bash
   kubectl describe pod [pod-name]
+  ```
+- view/stream logs of a pod or container in multi-container pod
+  ```bash
+  kubectl logs [pod-name]
+  kubectl logs -f [pod-name]
+  kubectl logs [pod-name] -c [container-name]
+  ```
+- view logs of previously running pod
+- view logs of a pod/container in multi-container pod
+  ```bash
+  kubectl logs -p [pod-name]
   ```
 - execute shell in a pod
   ```bash
