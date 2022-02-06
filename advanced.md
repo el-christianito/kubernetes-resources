@@ -53,3 +53,25 @@ spec:
       ports:
         - containerPort: 8080
 ```
+
+### Sidecar Pattern
+
+- long running
+- helper for the main app container
+- single-purpose
+- one use-case in relation to init-example above: what if we regularly want to sync changes from git?
+- sidecars can be a pain to schedule (no guarantee which container runs first)
+  - currently no way to set
+  - is planned in new k8s versions
+- declaration in YAML just as another entry in the containers-array
+
+### Adapter Pattern
+
+- specialized version of sidecar pattern
+- e.g. format mismatch for external service -> conversion nessary to standardize output -> adapter
+- accessible in same host, different IP to collect from e.g. monitoring service (e.g. Prometheus)
+
+### Ambassador Pattern
+
+- sits between application container and external system
+- while main app focusses on single task, ambassador brokers external connections

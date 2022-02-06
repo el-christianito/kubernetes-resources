@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ambassador-app
+spec:
+  containers:
+  - name: main-app
+    image: nigelpoulton/curl:1.0 # simulates connections to localhost:9000
+    command: ["sleep", "3600"]
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+  - name: ambassador
+    image: nigelpoulton/nginx-ambassador:1.0 # listens to port 9000 and proxies it to ps-ambassador:80
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "500m"

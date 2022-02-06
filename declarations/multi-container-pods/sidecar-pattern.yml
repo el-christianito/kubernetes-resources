@@ -5,7 +5,12 @@ metadata:
   labels:
     app: initializer
 spec:
-  initContainers: # has to finish successfully before container below starts
+  containers:
+    - name: web # convention: app container first
+      image: nginx
+      volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx
     - name: init-sync-ctr
       image: k8s.gcr.io/git-sync:v3.1.5
       volumeMounts:
@@ -20,14 +25,6 @@ spec:
           value: "1"
         - name: GIT_SYNC_DEST
           value: "html"
-        - name: GIT_SYNC_ONE_TIME
-          value: "true"
-  containers:
-    - name: web
-      image: nginx
-      volumeMounts:
-        - name: html
-          mountPath: /usr/share/nginx
   volumes:
     - name: html
       emptyDir: {}
@@ -42,5 +39,5 @@ spec:
   selector:
     app: git-syncer
   ports:
-    - port: 80
+  - port: 80
   type: LoadBalancer
